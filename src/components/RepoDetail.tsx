@@ -69,7 +69,9 @@ export function RepoDetail() {
     try {
       const commits = await github.getRecentCommits(repo.owner, repo.name, 5)
       setRecentCommits(commits)
-    } catch {} finally {
+    } catch (error) {
+      console.warn('Failed to load commits:', error)
+    } finally {
       setLoadingCommits(false)
     }
   }
@@ -82,8 +84,8 @@ export function RepoDetail() {
       if (translated && isChineseText(translated)) {
         setTranslatedDesc(translated)
       }
-    } catch {
-      // 翻译失败则不显示
+    } catch (error) {
+      console.warn('Translation failed:', error)
     } finally {
       setDescTranslating(false)
     }

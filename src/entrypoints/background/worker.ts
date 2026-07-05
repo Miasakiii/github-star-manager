@@ -1,6 +1,24 @@
 // Background Service Worker
 // 负责定时同步、检查更新、推送通知
 
+// 允许的消息类型白名单
+const ALLOWED_MESSAGE_TYPES = [
+  'OPEN_SIDEPANEL',
+  'SHOW_NOTIFICATION',
+  'SHOW_RELEASE_NOTIFICATIONS',
+  'TRIGGER_SYNC',
+  'CHECK_RELEASES',
+] as const
+
+type MessageType = typeof ALLOWED_MESSAGE_TYPES[number]
+
+// 验证消息结构
+function isValidMessage(message: unknown): message is { type: MessageType } {
+  if (!message || typeof message !== 'object') return false
+  const msg = message as Record<string, unknown>
+  return typeof msg.type === 'string' && ALLOWED_MESSAGE_TYPES.includes(msg.type as MessageType)
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   // 设置定时同步闹钟（每30分钟）
   chrome.alarms.create('sync-repos', { periodInMinutes: 30 })
@@ -24,18 +42,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false
   }
 
+  // 验证消息结构
+  if (!isValidMessage(message)) {
+    console.warn('Invalid message received:', message)
+    return false
+  }
+
   if (message.type === 'OPEN_SIDEPANEL') {
-    chrome.sidePanel.open({ tabId: message.tabId }).catch(() => {})
+    const tabId = (message as any).tabId
+    if (typeof tabId === 'number') {
+      chrome.sidePanel.open({ tabId }).catch(() => {})
+    }
     sendResponse({ ok: true })
   }
 
   // 处理通知请求
   if (message.type === 'SHOW_NOTIFICATION') {
-    chrome.notifications.create(message.id || 'star-manager', {
+    const msg = message as any
+    chrome.notifications.create(msg.id || 'star-manager', {
       type: 'basic',
       iconUrl: 'public/icon128.png',
-      title: message.title || 'GitHub Star Manager',
-      message: message.message || '',
+      title: msg.title || 'GitHub Star Manager',
+      message: msg.message || '',
       priority: 1,
     })
     sendResponse({ ok: true })
@@ -43,17 +71,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // 批量通知（新 releases）
   if (message.type === 'SHOW_RELEASE_NOTIFICATIONS') {
-    const releases = message.releases || []
+    const msg = message as any
+    const releases = Array.isArray(msg.releases) ? msg.releases : []
     releases.forEach((release: any, i: number) => {
-      setTimeout(() => {
-        chrome.notifications.create(`release-${release.repo_id}-${release.tag}`, {
-          type: 'basic',
-          iconUrl: 'public/icon128.png',
-          title: `新版本发布`,
-          message: `${release.repo_name} 发布了 ${release.tag}`,
-          priority: 2,
-        })
-      }, i * 1500) // 间隔 1.5s 避免通知轰炸
+      if (release?.repo_id && release?.tag && release?.repo_name) {
+        setTimeout(() => {
+          chrome.notifications.create(`release-${release.repo_id}-${release.tag}`, {
+            type: 'basic',
+            iconUrl: 'public/icon128.png',
+            title: `新版本发布`,
+            message: `${release.repo_name} 发布了 ${release.tag}`,
+            priority: 2,
+          })
+        }, i * 1500) // 间隔 1.5s 避免通知轰炸
+      }
     })
     sendResponse({ ok: true })
   }

@@ -1,6 +1,13 @@
 import { useState } from 'react'
 import { useStore } from '../lib/store'
 
+// GitHub Token 格式验证（支持经典 token 和细粒度 token）
+const GITHUB_TOKEN_PATTERN = /^(ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{36,255}$/
+
+function validateGitHubToken(token: string): boolean {
+  return GITHUB_TOKEN_PATTERN.test(token)
+}
+
 export function LoginScreen() {
   const [token, setToken] = useState('')
   const [error, setError] = useState('')
@@ -10,11 +17,19 @@ export function LoginScreen() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!token.trim()) return
+    const trimmedToken = token.trim()
+    if (!trimmedToken) return
+
+    // 验证 Token 格式
+    if (!validateGitHubToken(trimmedToken)) {
+      setError('Token 格式无效。GitHub Token 应以 ghp_, gho_, ghu_, ghs_ 或 ghr_ 开头')
+      return
+    }
+
     setLoading(true)
     setError('')
     try {
-      await login(token.trim())
+      await login(trimmedToken)
     } catch (err) {
       setError((err as Error).message || '登录失败，请检查 Token')
     } finally {

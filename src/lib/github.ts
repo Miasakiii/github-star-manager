@@ -42,6 +42,18 @@ export interface StarredRepo extends GitHubRepo {
   starred_at: string
 }
 
+// 验证仓库名称参数（防止路径遍历）
+const SAFE_REPO_NAME_PATTERN = /^[a-zA-Z0-9._-]+$/
+
+function validateRepoParams(owner: string, repo: string): void {
+  if (!owner || !repo) {
+    throw new Error('Repository owner and name are required')
+  }
+  if (!SAFE_REPO_NAME_PATTERN.test(owner) || !SAFE_REPO_NAME_PATTERN.test(repo)) {
+    throw new Error('Invalid repository owner or name format')
+  }
+}
+
 class GitHubClient {
   private token: string | null = null
 
@@ -112,6 +124,7 @@ class GitHubClient {
 
   // 获取仓库最新 release
   async getLatestRelease(owner: string, repo: string): Promise<GitHubRelease | null> {
+    validateRepoParams(owner, repo)
     try {
       return await this.request<GitHubRelease>(`/repos/${owner}/${repo}/releases/latest`)
     } catch {
@@ -121,6 +134,7 @@ class GitHubClient {
 
   // 获取仓库最近的 commits
   async getRecentCommits(owner: string, repo: string, limit = 5) {
+    validateRepoParams(owner, repo)
     try {
       return await this.request<any[]>(`/repos/${owner}/${repo}/commits?per_page=${limit}`)
     } catch {
@@ -130,11 +144,13 @@ class GitHubClient {
 
   // 获取仓库详情
   async getRepo(owner: string, repo: string): Promise<GitHubRepo> {
+    validateRepoParams(owner, repo)
     return this.request<GitHubRepo>(`/repos/${owner}/${repo}`)
   }
 
   // 取消星标
   async unstarRepo(owner: string, repo: string): Promise<void> {
+    validateRepoParams(owner, repo)
     await fetch(`${GITHUB_API}/user/starred/${owner}/${repo}`, {
       method: 'DELETE',
       headers: {
@@ -161,6 +177,7 @@ class GitHubClient {
 
   // 获取 README（优先中文版本）
   async getReadme(owner: string, repo: string): Promise<{ content: string; isChinese: boolean; path: string } | null> {
+    validateRepoParams(owner, repo)
     // 先尝试常见的中文 README 文件名
     const chinesePaths = [
       'README_zh.md', 'README_zh_CN.md', 'README.zh.md', 'README.cn.md',
