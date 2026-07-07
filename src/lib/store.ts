@@ -23,7 +23,7 @@ async function backfillCategories() {
   }
 }
 
-export type FilterType = 'all' | 'updates' | 'archived' | 'language' | 'tag'
+export type FilterType = 'all' | 'updates' | 'archived' | 'language' | 'tag' | 'category'
 export type SortType = 'updated' | 'starred' | 'stars' | 'name' | 'pushed'
 
 // 内部辅助函数：应用过滤和排序
@@ -60,6 +60,9 @@ function applyFilterAndSort(
       break
     case 'tag':
       if (filterValue) filtered = filtered.filter(r => r.tags.includes(filterValue))
+      break
+    case 'category':
+      if (filterValue) filtered = filtered.filter(r => r.category === filterValue)
       break
   }
 

@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useStore, type FilterType } from '../lib/store'
+import { CATEGORIES, CATEGORY_LABELS } from '../lib/classify'
 
 // SVG 图标
 const Icons = {
@@ -12,11 +13,13 @@ const Icons = {
 }
 
 export function FilterBar() {
-  const { filterType, filterValue, setFilter, repos } = useStore()
+  const { filterType, filterValue, setFilter, repos, categoryStats } = useStore()
   const [showLangMenu, setShowLangMenu] = useState(false)
   const [showTagMenu, setShowTagMenu] = useState(false)
+  const [showCategoryMenu, setShowCategoryMenu] = useState(false)
   const langRef = useRef<HTMLDivElement>(null)
   const tagRef = useRef<HTMLDivElement>(null)
+  const categoryRef = useRef<HTMLDivElement>(null)
 
   const languages = useMemo(() => {
     const langMap = new Map<string, number>()
@@ -34,6 +37,7 @@ export function FilterBar() {
     const handleClick = (e: MouseEvent) => {
       if (langRef.current && !langRef.current.contains(e.target as Node)) setShowLangMenu(false)
       if (tagRef.current && !tagRef.current.contains(e.target as Node)) setShowTagMenu(false)
+      if (categoryRef.current && !categoryRef.current.contains(e.target as Node)) setShowCategoryMenu(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
@@ -74,7 +78,7 @@ export function FilterBar() {
       {languages.length > 0 && (
         <div className="relative" ref={langRef}>
           <button
-            onClick={() => { setShowLangMenu(!showLangMenu); setShowTagMenu(false) }}
+            onClick={() => { setShowLangMenu(!showLangMenu); setShowTagMenu(false); setShowCategoryMenu(false) }}
             className={btnClass(filterType === 'language')}
           >
             {Icons.globe}
@@ -104,7 +108,7 @@ export function FilterBar() {
       {tags.length > 0 && (
         <div className="relative" ref={tagRef}>
           <button
-            onClick={() => { setShowTagMenu(!showTagMenu); setShowLangMenu(false) }}
+            onClick={() => { setShowTagMenu(!showTagMenu); setShowLangMenu(false); setShowCategoryMenu(false) }}
             className={btnClass(filterType === 'tag')}
           >
             {Icons.tag}
@@ -129,6 +133,43 @@ export function FilterBar() {
           )}
         </div>
       )}
+
+      {/* Category dropdown */}
+      <div className="relative" ref={categoryRef}>
+        <button
+          onClick={() => { setShowCategoryMenu(!showCategoryMenu); setShowLangMenu(false); setShowTagMenu(false) }}
+          className={btnClass(filterType === 'category')}
+        >
+          {Icons.tag}
+          {filterType === 'category' && filterValue ? (CATEGORY_LABELS[filterValue] || filterValue) : '分类'}
+          {Icons.chevron}
+        </button>
+        {showCategoryMenu && (
+          <div className="absolute left-0 top-full mt-1 bg-white rounded-md shadow-lg border border-[#d0d7de] py-1 w-40 max-h-48 overflow-y-auto z-50 animate-fade-in-scale">
+            {CATEGORIES.map(cat => (
+              <button
+                key={cat.id}
+                onClick={() => { setFilter('category', cat.id); setShowCategoryMenu(false) }}
+                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-[#f6f8fa] flex items-center justify-between transition-colors ${
+                  isActive('category', cat.id) ? 'text-[#0969da] bg-[#ddf4ff]' : 'text-[#24292f]'
+                }`}
+              >
+                <span>{cat.label}</span>
+                <span className="text-[10px] text-[#818b98] tabular-nums">{categoryStats[cat.id] || 0}</span>
+              </button>
+            ))}
+            <button
+              onClick={() => { setFilter('category', 'other'); setShowCategoryMenu(false) }}
+              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-[#f6f8fa] flex items-center justify-between transition-colors ${
+                isActive('category', 'other') ? 'text-[#0969da] bg-[#ddf4ff]' : 'text-[#24292f]'
+              }`}
+            >
+              <span>其他</span>
+              <span className="text-[10px] text-[#818b98] tabular-nums">{categoryStats['other'] || 0}</span>
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
