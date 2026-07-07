@@ -29,6 +29,7 @@ export interface Repo {
   has_updates: boolean          // 是否有更新
   last_release_tag: string | null
   last_release_at: string | null
+  category: string              // 自动分类结果
 }
 
 // 动态事件
@@ -65,6 +66,13 @@ db.version(1).stores({
 // v2: 移除布尔值字段的无效索引（IndexedDB 不支持布尔键），tags 多值索引保留
 db.version(2).stores({
   repos: 'id, full_name, owner, language, stargazers_count, pushed_at, *tags',
+  events: 'id, repo_id, event_type, created_at',
+  syncMeta: 'key',
+})
+
+// v3: 添加 category 字段
+db.version(3).stores({
+  repos: 'id, full_name, owner, language, stargazers_count, pushed_at, *tags, category',
   events: 'id, repo_id, event_type, created_at',
   syncMeta: 'key',
 })

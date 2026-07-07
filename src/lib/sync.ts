@@ -38,6 +38,7 @@ function toRepo(ghRepo: any): Repo {
     has_updates: false,
     last_release_tag: null,
     last_release_at: null,
+    category: 'other',
   }
 }
 
