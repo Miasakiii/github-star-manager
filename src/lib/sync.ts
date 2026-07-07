@@ -1,6 +1,7 @@
 // 仓库同步模块
 import { db, type Repo, type RepoEvent, setSyncMeta, getSyncMeta } from './db'
 import { github } from './github'
+import { classifyRepo } from './classify'
 
 export interface SyncProgress {
   phase: 'fetching' | 'comparing' | 'updating' | 'done'
@@ -38,7 +39,11 @@ function toRepo(ghRepo: any): Repo {
     has_updates: false,
     last_release_tag: null,
     last_release_at: null,
-    category: 'other',
+    category: classifyRepo({
+      topics: ghRepo.topics || [],
+      language: ghRepo.language,
+      description: ghRepo.description,
+    }),
   }
 }
 
@@ -92,6 +97,11 @@ export async function syncStarredRepos(
           disabled: ghRepo.disabled,
           last_synced: new Date().toISOString(),
           has_updates: hasUpdates,
+          category: classifyRepo({
+            topics: ghRepo.topics || [],
+            language: ghRepo.language,
+            description: ghRepo.description,
+          }),
         })
 
         // 记录更新事件

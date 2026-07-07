@@ -6,6 +6,22 @@ import { db } from './db'
 import { initAuth, logout as authLogout, loginWithToken } from './auth'
 import { syncStarredRepos, checkReleases, getLastSyncTime } from './sync'
 import { github } from './github'
+import { classifyRepo } from './classify'
+
+// 为没有分类的现有仓库补充分类
+async function backfillCategories() {
+  const repos = await db.repos.toArray()
+  const needsUpdate = repos.filter(r => !r.category || r.category === 'other')
+  for (const repo of needsUpdate) {
+    await db.repos.update(repo.id, {
+      category: classifyRepo({
+        topics: repo.topics,
+        language: repo.language,
+        description: repo.description,
+      }),
+    })
+  }
+}
 
 export type FilterType = 'all' | 'updates' | 'archived' | 'language' | 'tag'
 export type SortType = 'updated' | 'starred' | 'stars' | 'name' | 'pushed'
@@ -147,6 +163,7 @@ export const useStore = create<AppState>((set, get) => ({
         set({ user, isAuthenticated: true })
         await get().loadRepos()
         await get().loadEvents()
+        await backfillCategories()
         const lastSync = await getLastSyncTime()
         set({ lastSyncTime: lastSync })
       }
