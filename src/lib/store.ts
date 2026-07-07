@@ -6,7 +6,7 @@ import { db } from './db'
 import { initAuth, logout as authLogout, loginWithToken } from './auth'
 import { syncStarredRepos, checkReleases, getLastSyncTime } from './sync'
 import { github } from './github'
-import { classifyRepo } from './classify'
+import { classifyRepo, CATEGORIES, CATEGORY_LABELS } from './classify'
 
 // 为没有分类的现有仓库补充分类
 async function backfillCategories() {
@@ -102,6 +102,11 @@ interface AppState {
   sortType: SortType
   searchQuery: string
 
+  // 分类视图
+  viewMode: 'all' | 'category'
+  selectedCategory: string | null
+  categoryStats: Record<string, number>
+
   // 统计
   stats: {
     total: number
@@ -130,6 +135,8 @@ interface AppState {
   setFilter: (type: FilterType, value?: string) => void
   setSort: (type: SortType) => void
   selectRepo: (repo: Repo | null) => void
+  setViewMode: (mode: 'all' | 'category') => void
+  setSelectedCategory: (category: string | null) => void
   updateTags: (id: number, tags: string[]) => Promise<void>
   updateNotes: (id: number, notes: string) => Promise<void>
   markRepoSeen: (id: number) => Promise<void>
@@ -148,6 +155,9 @@ export const useStore = create<AppState>((set, get) => ({
   filterValue: '',
   sortType: 'pushed',
   searchQuery: '',
+  viewMode: 'all',
+  selectedCategory: null,
+  categoryStats: {},
   stats: { total: 0, archived: 0, withUpdates: 0, languages: 0, unreadEvents: 0 },
   isSyncing: false,
   syncProgress: '',
@@ -237,11 +247,25 @@ export const useStore = create<AppState>((set, get) => ({
     const languages = (await db.repos.orderBy('language').uniqueKeys()).length
     const allEvents = await db.events.toArray()
     const unreadEvents = allEvents.filter(e => !e.read).length
+
+    // 计算分类统计
+    const categoryStats: Record<string, number> = {}
+    for (const cat of CATEGORIES) {
+      categoryStats[cat.id] = repos.filter(r => r.category === cat.id).length
+    }
+    categoryStats['other'] = repos.filter(r => !r.category || r.category === 'other').length
+
     const stats = { total, archived, withUpdates, languages, unreadEvents }
 
     const state = get()
-    const filteredRepos = applyFilterAndSort(repos, state.filterType, state.filterValue, state.sortType, state.searchQuery)
-    set({ repos, filteredRepos, stats })
+    let filtered = applyFilterAndSort(repos, state.filterType, state.filterValue, state.sortType, state.searchQuery)
+
+    // 分类视图过滤
+    if (state.viewMode === 'category' && state.selectedCategory) {
+      filtered = filtered.filter(r => r.category === state.selectedCategory)
+    }
+
+    set({ repos, filteredRepos: filtered, stats, categoryStats })
   },
 
   // 加载事件
@@ -273,6 +297,18 @@ export const useStore = create<AppState>((set, get) => ({
 
   // 选择仓库
   selectRepo: (repo) => set({ selectedRepo: repo }),
+
+  // 设置视图模式
+  setViewMode: (mode) => {
+    set({ viewMode: mode, selectedCategory: null })
+    get().loadRepos()
+  },
+
+  // 设置选中的分类
+  setSelectedCategory: (category) => {
+    set({ selectedCategory: category })
+    get().loadRepos()
+  },
 
   // 更新标签
   updateTags: async (id, tags) => {
