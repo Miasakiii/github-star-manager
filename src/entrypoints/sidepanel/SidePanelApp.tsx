@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useStore } from '../../lib/store'
 import { LoginScreen } from '../../components/LoginScreen'
+import { CATEGORY_LABELS } from '../../lib/classify'
 
 const languageColors: Record<string, string> = {
   JavaScript: '#f1e05a', TypeScript: '#3178c6', Python: '#3572A5', Java: '#b07219',
@@ -29,7 +30,9 @@ export function SidePanelApp() {
     isAuthenticated, isLoading, user, repos, filteredRepos,
     stats, isSyncing, syncProgress, lastSyncTime,
     searchQuery, sortType,
+    viewMode, selectedCategory, categoryStats,
     init, sync, setSearch, setSort, setFilter, selectRepo,
+    setViewMode, setSelectedCategory,
   } = useStore()
 
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -84,65 +87,124 @@ export function SidePanelApp() {
           </div>
         </div>
 
-        {/* Search */}
-        <div className="px-3 py-2 border-b border-[#d0d7de] flex-shrink-0">
-          <div className="relative">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#818b98]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="搜索..."
-              className="w-full pl-9 pr-3 py-1.5 bg-[#f6f8fa] border border-[#d0d7de] rounded-md text-xs focus:bg-white focus:border-[#0969da] focus:ring-1 focus:ring-[#0969da]/30 transition-all placeholder:text-[#818b98]"
-            />
-          </div>
+        {/* View Mode Tabs */}
+        <div className="flex border-b border-[#d0d7de] flex-shrink-0">
+          <button
+            onClick={() => setViewMode('all')}
+            className={`flex-1 py-2 text-xs font-medium transition-colors ${
+              viewMode === 'all'
+                ? 'text-[#0969da] border-b-2 border-[#0969da] bg-white'
+                : 'text-[#59636e] hover:bg-[#f6f8fa]'
+            }`}
+          >
+            全部
+          </button>
+          <button
+            onClick={() => setViewMode('category')}
+            className={`flex-1 py-2 text-xs font-medium transition-colors ${
+              viewMode === 'category'
+                ? 'text-[#0969da] border-b-2 border-[#0969da] bg-white'
+                : 'text-[#59636e] hover:bg-[#f6f8fa]'
+            }`}
+          >
+            分类
+          </button>
         </div>
 
-        {/* List */}
-        <div className="flex-1 overflow-y-auto">
-          {filteredRepos.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-[#818b98] px-6">
-              <svg className="w-8 h-8 mb-2 text-[#818b98]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-5l-2 3h-2l-2-3H4" /></svg>
-              <p className="text-xs text-center">没有匹配的仓库</p>
-            </div>
-          ) : (
-            <div>
-              {filteredRepos.map(repo => (
+        {/* Category List or Repo List */}
+        {viewMode === 'category' && !selectedCategory ? (
+          <div className="flex-1 overflow-y-auto">
+            {Object.entries(CATEGORY_LABELS).map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => setSelectedCategory(id)}
+                className="w-full text-left px-4 py-3 hover:bg-[#f6f8fa] transition-colors border-b border-[#d0d7de]/30 flex items-center justify-between"
+              >
+                <span className="text-xs font-medium text-[#24292f]">{label}</span>
+                <span className="text-[10px] text-[#818b98] bg-[#f6f8fa] px-2 py-0.5 rounded-full">
+                  {categoryStats[id] || 0}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <>
+            {/* Back button when in category view */}
+            {viewMode === 'category' && selectedCategory && (
+              <div className="px-3 py-2 border-b border-[#d0d7de] flex-shrink-0">
                 <button
-                  key={repo.id}
-                  onClick={() => setSelectedId(repo.id)}
-                  className={`w-full text-left px-3 py-2 hover:bg-[#f6f8fa] transition-colors border-b border-[#d0d7de]/30 ${
-                    selectedId === repo.id ? 'bg-[#ddf4ff] border-l-2 border-l-[#0969da]' : 'border-l-2 border-l-transparent'
-                  }`}
+                  onClick={() => setSelectedCategory(null)}
+                  className="flex items-center gap-1 text-xs text-[#0969da] hover:text-[#0550ae]"
                 >
-                  <div className="flex items-center gap-2">
-                    {/* Owner Avatar */}
-                    <img
-                      src={repo.owner_avatar || `https://github.com/${repo.owner}.png?size=80`}
-                      alt={repo.owner}
-                      className="w-6 h-6 rounded-md flex-shrink-0"
-                      onError={(e) => { (e.currentTarget as HTMLImageElement).src = `https://github.com/${repo.owner}.png?size=80` }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-[#0969da] truncate">{repo.full_name}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {repo.language && <span className="text-[10px] text-[#59636e]">{repo.language}</span>}
-                        <span className="flex items-center gap-0.5 text-[10px] text-[#59636e]">
-                          <svg className="w-2.5 h-2.5 text-[#818b98]" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
-                          {formatStars(repo.stargazers_count)}
-                        </span>
-                        <span className="text-[10px] text-[#818b98]">{timeAgo(repo.pushed_at)}</span>
-                      </div>
-                    </div>
-                    {repo.has_updates && (
-                      <span className="w-2 h-2 bg-[#2da44e] rounded-full flex-shrink-0" />
-                    )}
-                  </div>
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                  返回分类
                 </button>
-              ))}
+                <p className="text-[10px] text-[#818b98] mt-1">
+                  {CATEGORY_LABELS[selectedCategory]} ({filteredRepos.length})
+                </p>
+              </div>
+            )}
+            {/* Search */}
+            <div className="px-3 py-2 border-b border-[#d0d7de] flex-shrink-0">
+              <div className="relative">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#818b98]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="搜索..."
+                  className="w-full pl-9 pr-3 py-1.5 bg-[#f6f8fa] border border-[#d0d7de] rounded-md text-xs focus:bg-white focus:border-[#0969da] focus:ring-1 focus:ring-[#0969da]/30 transition-all placeholder:text-[#818b98]"
+                />
+              </div>
             </div>
-          )}
-        </div>
+            {/* Repo List */}
+            <div className="flex-1 overflow-y-auto">
+              {filteredRepos.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-[#818b98] px-6">
+                  <svg className="w-8 h-8 mb-2 text-[#818b98]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-5l-2 3h-2l-2-3H4" /></svg>
+                  <p className="text-xs text-center">没有匹配的仓库</p>
+                </div>
+              ) : (
+                <div>
+                  {filteredRepos.map(repo => (
+                    <button
+                      key={repo.id}
+                      onClick={() => setSelectedId(repo.id)}
+                      className={`w-full text-left px-3 py-2 hover:bg-[#f6f8fa] transition-colors border-b border-[#d0d7de]/30 ${
+                        selectedId === repo.id ? 'bg-[#ddf4ff] border-l-2 border-l-[#0969da]' : 'border-l-2 border-l-transparent'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <img
+                          src={repo.owner_avatar || `https://github.com/${repo.owner}.png?size=80`}
+                          alt={repo.owner}
+                          className="w-6 h-6 rounded-md flex-shrink-0"
+                          onError={(e) => { (e.currentTarget as HTMLImageElement).src = `https://github.com/${repo.owner}.png?size=80` }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-[#0969da] truncate">{repo.full_name}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {repo.language && <span className="text-[10px] text-[#59636e]">{repo.language}</span>}
+                            <span className="flex items-center gap-0.5 text-[10px] text-[#59636e]">
+                              <svg className="w-2.5 h-2.5 text-[#818b98]" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+                              {formatStars(repo.stargazers_count)}
+                            </span>
+                            <span className="text-[10px] text-[#818b98]">{timeAgo(repo.pushed_at)}</span>
+                          </div>
+                        </div>
+                        {repo.has_updates && (
+                          <span className="w-2 h-2 bg-[#2da44e] rounded-full flex-shrink-0" />
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Right: Detail */}
