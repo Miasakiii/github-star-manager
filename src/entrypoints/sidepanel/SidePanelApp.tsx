@@ -2,28 +2,9 @@ import { useEffect, useState, useMemo } from 'react'
 import { useStore } from '../../lib/store'
 import { LoginScreen } from '../../components/LoginScreen'
 import { CATEGORY_LABELS } from '../../lib/classify'
-
-const languageColors: Record<string, string> = {
-  JavaScript: '#f1e05a', TypeScript: '#3178c6', Python: '#3572A5', Java: '#b07219',
-  Go: '#00ADD8', Rust: '#dea584', 'C++': '#f34b7d', C: '#555555', 'C#': '#178600',
-  Ruby: '#701516', PHP: '#4F5D95', Swift: '#F05138', Kotlin: '#A97BFF',
-}
-
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 60) return `${mins}m`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h`
-  const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d`
-  return `${Math.floor(days / 30)}mo`
-}
-
-function formatStars(n: number): string {
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`
-  return n.toLocaleString()
-}
+import { Icons } from '../../lib/icons'
+import { safeAvatarUrl, timeAgoShort, formatStars, LANGUAGE_COLORS } from '../../lib/utils'
+import { useDebounce } from '../../lib/useDebounce'
 
 export function SidePanelApp() {
   const {
@@ -31,12 +12,19 @@ export function SidePanelApp() {
     stats, isSyncing, syncProgress, lastSyncTime,
     searchQuery, sortType,
     viewMode, selectedCategory, categoryStats,
-    init, sync, setSearch, setSort, setFilter, selectRepo,
+    init, sync, setSort, setFilter, selectRepo,
     setViewMode, setSelectedCategory,
   } = useStore()
 
   const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [searchInput, setSearchInput] = useState(searchQuery)
+  const debouncedSearch = useDebounce(searchInput, 200, useStore.getState().setSearch)
   const selectedRepo = repos.find(r => r.id === selectedId)
+
+  // Sync local input when store query changes externally
+  useEffect(() => {
+    if (searchQuery !== searchInput) setSearchInput(searchQuery)
+  }, [searchQuery])
 
   useEffect(() => { init() }, [])
 
@@ -59,7 +47,7 @@ export function SidePanelApp() {
     <div className="flex h-screen bg-white">
       {/* Left: Repo List */}
       <div className="w-80 border-r border-[#d0d7de] flex flex-col flex-shrink-0 bg-white">
-        {/* Header - GitHub dark */}
+        {/* Header */}
         <div className="bg-[#24292f] text-white px-4 py-3 flex-shrink-0">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
@@ -74,7 +62,7 @@ export function SidePanelApp() {
               {isSyncing ? (
                 <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
               ) : (
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                Icons.sync
               )}
               同步
             </button>
@@ -136,9 +124,7 @@ export function SidePanelApp() {
                   onClick={() => setSelectedCategory(null)}
                   className="flex items-center gap-1 text-xs text-[#0969da] hover:text-[#0550ae]"
                 >
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
+                  {Icons.back}
                   返回分类
                 </button>
                 <p className="text-[10px] text-[#818b98] mt-1">
@@ -149,11 +135,11 @@ export function SidePanelApp() {
             {/* Search */}
             <div className="px-3 py-2 border-b border-[#d0d7de] flex-shrink-0">
               <div className="relative">
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#818b98]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#818b98]">{Icons.search}</span>
                 <input
                   type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearch(e.target.value)}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
                   placeholder="搜索..."
                   className="w-full pl-9 pr-3 py-1.5 bg-[#f6f8fa] border border-[#d0d7de] rounded-md text-xs focus:bg-white focus:border-[#0969da] focus:ring-1 focus:ring-[#0969da]/30 transition-all placeholder:text-[#818b98]"
                 />
@@ -163,8 +149,8 @@ export function SidePanelApp() {
             <div className="flex-1 overflow-y-auto">
               {filteredRepos.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-[#818b98] px-6">
-                  <svg className="w-8 h-8 mb-2 text-[#818b98]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-5l-2 3h-2l-2-3H4" /></svg>
-                  <p className="text-xs text-center">没有匹配的仓库</p>
+                  <span className="text-[#818b98]">{Icons.emptyInbox}</span>
+                  <p className="text-xs text-center mt-2">没有匹配的仓库</p>
                 </div>
               ) : (
                 <div>
@@ -178,7 +164,7 @@ export function SidePanelApp() {
                     >
                       <div className="flex items-center gap-2">
                         <img
-                          src={repo.owner_avatar || `https://github.com/${repo.owner}.png?size=80`}
+                          src={safeAvatarUrl(repo.owner, repo.owner_avatar)}
                           alt={repo.owner}
                           className="w-6 h-6 rounded-md flex-shrink-0"
                           onError={(e) => { (e.currentTarget as HTMLImageElement).src = `https://github.com/${repo.owner}.png?size=80` }}
@@ -188,10 +174,10 @@ export function SidePanelApp() {
                           <div className="flex items-center gap-2 mt-0.5">
                             {repo.language && <span className="text-[10px] text-[#59636e]">{repo.language}</span>}
                             <span className="flex items-center gap-0.5 text-[10px] text-[#59636e]">
-                              <svg className="w-2.5 h-2.5 text-[#818b98]" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+                              <span className="text-[#818b98]">{Icons.star}</span>
                               {formatStars(repo.stargazers_count)}
                             </span>
-                            <span className="text-[10px] text-[#818b98]">{timeAgo(repo.pushed_at)}</span>
+                            <span className="text-[10px] text-[#818b98]">{timeAgoShort(repo.pushed_at)}</span>
                           </div>
                         </div>
                         {repo.has_updates && (
@@ -226,20 +212,20 @@ export function SidePanelApp() {
               )}
               <div className="flex items-center gap-4 mt-3">
                 <span className="flex items-center gap-1.5 text-sm text-[#59636e]">
-                  <svg className="w-4 h-4 text-[#818b98]" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+                  <span className="text-[#818b98]">{Icons.star}</span>
                   {selectedRepo.stargazers_count.toLocaleString()}
                 </span>
                 <span className="flex items-center gap-1.5 text-sm text-[#59636e]">
-                  <svg className="w-4 h-4 text-[#818b98]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a1.99 1.99 0 010 2.828l-7 7a1.99 1.99 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z" /></svg>
+                  <span className="text-[#818b98]">{Icons.fork}</span>
                   {selectedRepo.forks_count.toLocaleString()}
                 </span>
                 <span className="flex items-center gap-1.5 text-sm text-[#59636e]">
-                  <svg className="w-4 h-4 text-[#818b98]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+                  <span className="text-[#818b98]">{Icons.info}</span>
                   {selectedRepo.open_issues_count}
                 </span>
                 {selectedRepo.language && (
                   <span className="flex items-center gap-1.5 text-sm text-[#59636e]">
-                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: languageColors[selectedRepo.language] || '#999' }} />
+                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: LANGUAGE_COLORS[selectedRepo.language] || '#999' }} />
                     {selectedRepo.language}
                   </span>
                 )}
@@ -256,7 +242,7 @@ export function SidePanelApp() {
                   rel="noopener"
                   className="flex items-center gap-2 px-4 py-2 bg-[#1f883d] text-white rounded-md text-sm font-medium hover:bg-[#1a7f37] transition-colors"
                 >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                  {Icons.externalLink}
                   在 GitHub 打开
                 </a>
                 {selectedRepo.homepage && (
@@ -266,7 +252,7 @@ export function SidePanelApp() {
                     rel="noopener"
                     className="flex items-center gap-2 px-4 py-2 bg-[#f6f8fa] text-[#24292f] rounded-md text-sm font-medium hover:bg-[#f3f4f6] transition-colors border border-[#d0d7de]"
                   >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>
+                    {Icons.globe}
                     主页
                   </a>
                 )}
@@ -288,8 +274,8 @@ export function SidePanelApp() {
               <div className="grid grid-cols-2 gap-3">
                 {[
                   { label: '创建时间', value: new Date(selectedRepo.created_at).toLocaleDateString('zh-CN') },
-                  { label: '最后推送', value: timeAgo(selectedRepo.pushed_at) + ' 前' },
-                  { label: '最后同步', value: timeAgo(selectedRepo.last_synced) + ' 前' },
+                  { label: '最后推送', value: timeAgoShort(selectedRepo.pushed_at) + ' 前' },
+                  { label: '最后同步', value: timeAgoShort(selectedRepo.last_synced) + ' 前' },
                   ...(selectedRepo.last_release_tag ? [{ label: '最新版本', value: selectedRepo.last_release_tag }] : []),
                 ].map(item => (
                   <div key={item.label} className="bg-white rounded-md p-3 border border-[#d0d7de]">
@@ -303,7 +289,7 @@ export function SidePanelApp() {
               {selectedRepo.notes && (
                 <div className="p-4 bg-[#fff8c5] rounded-md border border-[#eac54a]/30">
                   <h4 className="text-xs font-semibold text-[#7d4e00] mb-1.5 flex items-center gap-1.5">
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                    {Icons.info}
                     备注
                   </h4>
                   <p className="text-sm text-[#7d4e00] leading-relaxed">{selectedRepo.notes}</p>
@@ -314,7 +300,7 @@ export function SidePanelApp() {
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-[#818b98]">
             <div className="w-16 h-16 bg-[#f6f8fa] rounded-xl flex items-center justify-center mb-4">
-              <svg className="w-8 h-8 text-[#818b98]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+              {Icons.emptyInbox}
             </div>
             <p className="text-sm font-medium text-[#59636e]">从左侧选择一个仓库</p>
             <p className="text-xs text-[#818b98] mt-1">查看详情、提交记录和版本信息</p>

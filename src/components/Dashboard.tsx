@@ -1,15 +1,17 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useStore, type SortType } from '../lib/store'
 import { RepoCard } from './RepoCard'
 import { StatsBar } from './StatsBar'
 import { FilterBar } from './FilterBar'
 import { EventList } from './EventList'
+import { Icons } from '../lib/icons'
+import { timeSince } from '../lib/utils'
+import { useDebounce } from '../lib/useDebounce'
 
 export function Dashboard() {
   const {
     user,
     filteredRepos,
-    stats,
     isSyncing,
     syncProgress,
     lastSyncTime,
@@ -17,12 +19,13 @@ export function Dashboard() {
     sortType,
     events,
     sync,
-    setSearch,
     setSort,
     logout,
     loadEvents,
   } = useStore()
 
+  const [searchInput, setSearchInput] = useState(searchQuery)
+  const debouncedSearch = useDebounce(searchInput, 200, useStore.getState().setSearch)
   const [view, setView] = useState<'repos' | 'events'>('repos')
   const [showMenu, setShowMenu] = useState(false)
 
@@ -34,21 +37,14 @@ export function Dashboard() {
     { value: 'name', label: '名称排序' },
   ]
 
-  const timeSince = (dateStr: string | null) => {
-    if (!dateStr) return '从未'
-    const diff = Date.now() - new Date(dateStr).getTime()
-    const mins = Math.floor(diff / 60000)
-    if (mins < 1) return '刚刚'
-    if (mins < 60) return `${mins}分钟前`
-    const hours = Math.floor(mins / 60)
-    if (hours < 24) return `${hours}小时前`
-    const days = Math.floor(hours / 24)
-    return `${days}天前`
-  }
+  // Sync local input when store query changes externally
+  useEffect(() => {
+    if (searchQuery !== searchInput) setSearchInput(searchQuery)
+  }, [searchQuery])
 
   return (
     <div className="w-[440px] h-[600px] flex flex-col bg-white overflow-hidden">
-      {/* Header - GitHub dark style */}
+      {/* Header */}
       <div className="bg-[#24292f] px-4 py-3 text-white flex-shrink-0">
         <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-2">
@@ -62,7 +58,6 @@ export function Dashboard() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Sync button */}
             <button
               onClick={() => sync()}
               disabled={isSyncing}
@@ -72,12 +67,11 @@ export function Dashboard() {
               {isSyncing ? (
                 <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
               ) : (
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                Icons.sync
               )}
               {isSyncing ? '同步中' : '同步'}
             </button>
 
-            {/* Avatar menu */}
             <div className="relative">
               <button
                 onClick={() => setShowMenu(!showMenu)}
@@ -97,7 +91,7 @@ export function Dashboard() {
                       onClick={logout}
                       className="w-full text-left px-3 py-2 text-xs text-[#cf222e] hover:bg-[#f6f8fa] flex items-center gap-2 transition-colors"
                     >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                      {Icons.logOut}
                       退出登录
                     </button>
                   </div>
@@ -118,14 +112,14 @@ export function Dashboard() {
         )}
 
         {/* Stats */}
-        <StatsBar stats={stats} />
+        <StatsBar />
       </div>
 
       {/* Tab Bar */}
       <div className="flex border-b border-[#d0d7de] flex-shrink-0 bg-white">
         {[
           { key: 'repos' as const, label: '仓库列表', count: filteredRepos.length },
-          { key: 'events' as const, label: '动态', count: stats.unreadEvents },
+          { key: 'events' as const, label: '动态', count: events.length },
         ].map(tab => (
           <button
             key={tab.key}
@@ -150,11 +144,11 @@ export function Dashboard() {
           <div className="px-3 py-2 border-b border-[#d0d7de]/40 flex-shrink-0 space-y-2 bg-[#f6f8fa]/50">
             <div className="flex gap-2">
               <div className="relative flex-1">
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#818b98]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#818b98]">{Icons.search}</span>
                 <input
                   type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearch(e.target.value)}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
                   placeholder="搜索仓库、描述、标签..."
                   className="w-full pl-9 pr-3 py-1.5 bg-white border border-[#d0d7de] rounded-md text-xs focus:border-[#0969da] focus:ring-1 focus:ring-[#0969da]/30 transition-all placeholder:text-[#818b98]"
                 />
@@ -183,9 +177,9 @@ export function Dashboard() {
               <div className="flex flex-col items-center justify-center h-full text-[#818b98] px-8">
                 <div className="w-14 h-14 bg-[#f6f8fa] rounded-xl flex items-center justify-center mb-3">
                   {searchQuery ? (
-                    <svg className="w-7 h-7 text-[#818b98]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                    <span className="text-[#818b98]">{Icons.search}</span>
                   ) : (
-                    <svg className="w-7 h-7 text-[#818b98]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-5l-2 3h-2l-2-3H4" /></svg>
+                    <span className="text-[#818b98]">{Icons.emptyInbox}</span>
                   )}
                 </div>
                 <p className="text-sm font-medium text-[#59636e]">
@@ -222,7 +216,7 @@ export function Dashboard() {
                   <span>打开</span>
                 </span>
                 <span className="flex items-center gap-1">
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  {Icons.clock}
                   {timeSince(lastSyncTime)}
                 </span>
               </div>

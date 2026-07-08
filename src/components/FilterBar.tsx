@@ -1,25 +1,117 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useStore, type FilterType } from '../lib/store'
 import { CATEGORIES, CATEGORY_LABELS } from '../lib/classify'
+import { Icons } from '../lib/icons'
+import { LANGUAGE_COLORS } from '../lib/utils'
+import type { ReactNode } from 'react'
 
-// SVG 图标
-const Icons = {
-  list: <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>,
-  bell: <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>,
-  archive: <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>,
-  globe: <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
-  tag: <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a1.99 1.99 0 010 2.828l-7 7a1.99 1.99 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z" /></svg>,
-  chevron: <svg className="w-3 h-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>,
+function FilterDropdown({
+  label,
+  icon,
+  items,
+  activeValue,
+  onSelect,
+}: {
+  label: string
+  icon: ReactNode
+  items: { id: string; label: string; count?: number; colorDot?: string }[]
+  activeValue: string | null
+  onSelect: (value: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const [position, setPosition] = useState({ top: 0, left: 0 })
+
+  const updatePosition = useCallback(() => {
+    if (!btnRef.current) return
+    const rect = btnRef.current.getBoundingClientRect()
+    setPosition({ top: rect.bottom + 4, left: rect.left })
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    updatePosition()
+
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (target.closest('[data-dropdown-portal]') || target.closest('[data-dropdown-btn]')) return
+      setOpen(false)
+    }
+
+    const handleScroll = () => updatePosition()
+    const handleResize = () => updatePosition()
+
+    document.addEventListener('mousedown', handleClick)
+    window.addEventListener('scroll', handleScroll, true)
+    window.addEventListener('resize', handleResize)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      window.removeEventListener('scroll', handleScroll, true)
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [open, updatePosition])
+
+  if (items.length === 0) return null
+
+  const btnClass = `flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium whitespace-nowrap transition-colors ${
+    activeValue
+      ? 'bg-[#ddf4ff] text-[#0969da] border border-[#0969da]/20'
+      : 'bg-[#f6f8fa] text-[#59636e] hover:bg-[#f3f4f6] border border-[#d0d7de]'
+  }`
+
+  const menu = open ? createPortal(
+    <div
+      data-dropdown-portal
+      className="bg-white rounded-md shadow-lg border border-[#d0d7de] py-1 w-40 max-h-48 overflow-y-auto z-[9999] animate-fade-in-scale"
+      style={{ position: 'fixed', top: position.top, left: position.left }}
+    >
+      {items.map(item => (
+        <button
+          key={item.id}
+          onMouseDown={(e) => {
+            e.preventDefault()
+            onSelect(item.id)
+            setOpen(false)
+          }}
+          className={`w-full text-left px-3 py-1.5 text-xs hover:bg-[#f6f8fa] flex items-center justify-between transition-colors ${
+            activeValue === item.id ? 'text-[#0969da] bg-[#ddf4ff]' : 'text-[#24292f]'
+          }`}
+        >
+          <span className="flex items-center gap-1.5">
+            {item.colorDot && (
+              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: item.colorDot }} />
+            )}
+            {item.label}
+          </span>
+          {item.count !== undefined && (
+            <span className="text-[10px] text-[#818b98] tabular-nums">{item.count}</span>
+          )}
+        </button>
+      ))}
+    </div>,
+    document.body
+  ) : null
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        data-dropdown-btn
+        onClick={() => setOpen(!open)}
+        className={btnClass}
+      >
+        {icon}
+        {activeValue || label}
+        {Icons.chevron}
+      </button>
+      {menu}
+    </>
+  )
 }
 
 export function FilterBar() {
   const { filterType, filterValue, setFilter, repos, categoryStats } = useStore()
-  const [showLangMenu, setShowLangMenu] = useState(false)
-  const [showTagMenu, setShowTagMenu] = useState(false)
-  const [showCategoryMenu, setShowCategoryMenu] = useState(false)
-  const langRef = useRef<HTMLDivElement>(null)
-  const tagRef = useRef<HTMLDivElement>(null)
-  const categoryRef = useRef<HTMLDivElement>(null)
 
   const languages = useMemo(() => {
     const langMap = new Map<string, number>()
@@ -33,26 +125,11 @@ export function FilterBar() {
     return Array.from(tagMap.entries()).sort((a, b) => b[1] - a[1])
   }, [repos])
 
-  useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (langRef.current && !langRef.current.contains(e.target as Node)) setShowLangMenu(false)
-      if (tagRef.current && !tagRef.current.contains(e.target as Node)) setShowTagMenu(false)
-      if (categoryRef.current && !categoryRef.current.contains(e.target as Node)) setShowCategoryMenu(false)
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
-
-  const filters: { type: FilterType; label: string; icon: JSX.Element }[] = [
+  const filters: { type: Exclude<FilterType, 'language' | 'tag' | 'category'>; label: string; icon: ReactNode }[] = [
     { type: 'all', label: '全部', icon: Icons.list },
     { type: 'updates', label: '有更新', icon: Icons.bell },
     { type: 'archived', label: '归档', icon: Icons.archive },
   ]
-
-  const isActive = (type: FilterType, value?: string) => {
-    if (value) return filterType === type && filterValue === value
-    return filterType === type && !filterValue
-  }
 
   const btnClass = (active: boolean) =>
     `flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium whitespace-nowrap transition-colors ${
@@ -61,115 +138,61 @@ export function FilterBar() {
         : 'bg-[#f6f8fa] text-[#59636e] hover:bg-[#f3f4f6] border border-[#d0d7de]'
     }`
 
+  const languageItems = languages.map(([lang, count]) => ({
+    id: lang,
+    label: lang,
+    count,
+    colorDot: LANGUAGE_COLORS[lang] || '#999',
+  }))
+
+  const tagItems = tags.map(([tag, count]) => ({
+    id: tag,
+    label: tag,
+    count,
+  }))
+
+  const categoryItems = CATEGORIES.map(cat => ({
+    id: cat.id,
+    label: cat.label,
+    count: categoryStats[cat.id] || 0,
+  }))
+
   return (
-    <div className="flex items-center gap-1.5 mt-2 overflow-x-auto scrollbar-none">
+    <div className="flex items-center gap-1.5 mt-2 whitespace-nowrap">
       {filters.map(f => (
         <button
           key={f.type}
           onClick={() => setFilter(f.type)}
-          className={btnClass(isActive(f.type))}
+          className={btnClass(filterType === f.type)}
         >
           {f.icon}
           {f.label}
         </button>
       ))}
 
-      {/* Language dropdown */}
-      {languages.length > 0 && (
-        <div className="relative" ref={langRef}>
-          <button
-            onClick={() => { setShowLangMenu(!showLangMenu); setShowTagMenu(false); setShowCategoryMenu(false) }}
-            className={btnClass(filterType === 'language')}
-          >
-            {Icons.globe}
-            {filterType === 'language' && filterValue ? filterValue : '语言'}
-            {Icons.chevron}
-          </button>
-          {showLangMenu && (
-            <div className="absolute left-0 top-full mt-1 bg-white rounded-md shadow-lg border border-[#d0d7de] py-1 w-40 max-h-48 overflow-y-auto z-50 animate-fade-in-scale">
-              {languages.map(([lang, count]) => (
-                <button
-                  key={lang}
-                  onClick={() => { setFilter('language', lang); setShowLangMenu(false) }}
-                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-[#f6f8fa] flex items-center justify-between transition-colors ${
-                    isActive('language', lang) ? 'text-[#0969da] bg-[#ddf4ff]' : 'text-[#24292f]'
-                  }`}
-                >
-                  <span>{lang}</span>
-                  <span className="text-[10px] text-[#818b98] tabular-nums">{count}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      <FilterDropdown
+        label="语言"
+        icon={Icons.globe}
+        items={languageItems}
+        activeValue={filterType === 'language' ? filterValue : null}
+        onSelect={(lang) => setFilter('language', lang)}
+      />
 
-      {/* Tag dropdown */}
-      {tags.length > 0 && (
-        <div className="relative" ref={tagRef}>
-          <button
-            onClick={() => { setShowTagMenu(!showTagMenu); setShowLangMenu(false); setShowCategoryMenu(false) }}
-            className={btnClass(filterType === 'tag')}
-          >
-            {Icons.tag}
-            {filterType === 'tag' && filterValue ? filterValue : '标签'}
-            {Icons.chevron}
-          </button>
-          {showTagMenu && (
-            <div className="absolute left-0 top-full mt-1 bg-white rounded-md shadow-lg border border-[#d0d7de] py-1 w-40 max-h-48 overflow-y-auto z-50 animate-fade-in-scale">
-              {tags.map(([tag, count]) => (
-                <button
-                  key={tag}
-                  onClick={() => { setFilter('tag', tag); setShowTagMenu(false) }}
-                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-[#f6f8fa] flex items-center justify-between transition-colors ${
-                    isActive('tag', tag) ? 'text-[#0969da] bg-[#ddf4ff]' : 'text-[#24292f]'
-                  }`}
-                >
-                  <span>{tag}</span>
-                  <span className="text-[10px] text-[#818b98] tabular-nums">{count}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      <FilterDropdown
+        label="标签"
+        icon={Icons.tag}
+        items={tagItems}
+        activeValue={filterType === 'tag' ? filterValue : null}
+        onSelect={(tag) => setFilter('tag', tag)}
+      />
 
-      {/* Category dropdown */}
-      <div className="relative" ref={categoryRef}>
-        <button
-          onClick={() => { setShowCategoryMenu(!showCategoryMenu); setShowLangMenu(false); setShowTagMenu(false) }}
-          className={btnClass(filterType === 'category')}
-        >
-          {Icons.tag}
-          {filterType === 'category' && filterValue ? (CATEGORY_LABELS[filterValue] || filterValue) : '分类'}
-          {Icons.chevron}
-        </button>
-        {showCategoryMenu && (
-          <div className="absolute left-0 top-full mt-1 bg-white rounded-md shadow-lg border border-[#d0d7de] py-1 w-40 max-h-48 overflow-y-auto z-50 animate-fade-in-scale">
-            {CATEGORIES.map(cat => (
-              <button
-                key={cat.id}
-                onClick={() => { setFilter('category', cat.id); setShowCategoryMenu(false) }}
-                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-[#f6f8fa] flex items-center justify-between transition-colors ${
-                  isActive('category', cat.id) ? 'text-[#0969da] bg-[#ddf4ff]' : 'text-[#24292f]'
-                }`}
-              >
-                <span>{cat.label}</span>
-                <span className="text-[10px] text-[#818b98] tabular-nums">{categoryStats[cat.id] || 0}</span>
-              </button>
-            ))}
-            <button
-              onClick={() => { setFilter('category', 'other'); setShowCategoryMenu(false) }}
-              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-[#f6f8fa] flex items-center justify-between transition-colors ${
-                isActive('category', 'other') ? 'text-[#0969da] bg-[#ddf4ff]' : 'text-[#24292f]'
-              }`}
-            >
-              <span>其他</span>
-              <span className="text-[10px] text-[#818b98] tabular-nums">{categoryStats['other'] || 0}</span>
-            </button>
-          </div>
-        )}
-      </div>
+      <FilterDropdown
+        label="分类"
+        icon={Icons.tag}
+        items={categoryItems}
+        activeValue={filterType === 'category' ? filterValue : null}
+        onSelect={(cat) => setFilter('category', cat)}
+      />
     </div>
   )
 }

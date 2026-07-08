@@ -8,10 +8,18 @@ import { syncStarredRepos, checkReleases, getLastSyncTime } from './sync'
 import { github } from './github'
 import { classifyRepo, CATEGORIES, CATEGORY_LABELS } from './classify'
 
-// 为没有分类的现有仓库补充分类
-async function backfillCategories() {
+const hasCategories = (r: Repo): boolean => !!r.category && r.category !== 'other'
+
+// 为没有分类的现有仓库补充分类（仅检查有无分类，避免无谓写入）
+let backfillDone = false
+export async function backfillCategories() {
+  if (backfillDone) return
   const repos = await db.repos.toArray()
-  const needsUpdate = repos.filter(r => !r.category || r.category === 'other')
+  const needsUpdate = repos.filter(r => !hasCategories(r))
+  if (needsUpdate.length === 0) {
+    backfillDone = true
+    return
+  }
   for (const repo of needsUpdate) {
     await db.repos.update(repo.id, {
       category: classifyRepo({
@@ -21,12 +29,12 @@ async function backfillCategories() {
       }),
     })
   }
+  backfillDone = true
 }
 
 export type FilterType = 'all' | 'updates' | 'archived' | 'language' | 'tag' | 'category'
 export type SortType = 'updated' | 'starred' | 'stars' | 'name' | 'pushed'
 
-// 内部辅助函数：应用过滤和排序
 function applyFilterAndSort(
   repos: Repo[],
   filterType: FilterType,
@@ -36,7 +44,6 @@ function applyFilterAndSort(
 ): Repo[] {
   let filtered = [...repos]
 
-  // 搜索过滤
   if (searchQuery) {
     const q = searchQuery.toLowerCase()
     filtered = filtered.filter(r =>
@@ -47,7 +54,6 @@ function applyFilterAndSort(
     )
   }
 
-  // 类型过滤
   switch (filterType) {
     case 'updates':
       filtered = filtered.filter(r => r.has_updates)
@@ -66,7 +72,6 @@ function applyFilterAndSort(
       break
   }
 
-  // 排序
   switch (sortType) {
     case 'updated':
       filtered.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
@@ -89,28 +94,19 @@ function applyFilterAndSort(
 }
 
 interface AppState {
-  // 认证
   user: GitHubUser | null
   isAuthenticated: boolean
   isLoading: boolean
-
-  // 仓库数据
   repos: Repo[]
   filteredRepos: Repo[]
   selectedRepo: Repo | null
-
-  // 过滤与排序
   filterType: FilterType
   filterValue: string
   sortType: SortType
   searchQuery: string
-
-  // 分类视图
   viewMode: 'all' | 'category'
   selectedCategory: string | null
   categoryStats: Record<string, number>
-
-  // 统计
   stats: {
     total: number
     archived: number
@@ -118,16 +114,11 @@ interface AppState {
     languages: number
     unreadEvents: number
   }
-
-  // 同步状态
   isSyncing: boolean
   syncProgress: string
   lastSyncTime: string | null
-
-  // 事件
   events: RepoEvent[]
 
-  // Actions
   init: () => Promise<void>
   login: (token: string) => Promise<void>
   logout: () => Promise<void>
@@ -146,8 +137,9 @@ interface AppState {
   removeRepo: (id: number) => Promise<void>
 }
 
+let messageListenerAdded = false
+
 export const useStore = create<AppState>((set, get) => ({
-  // 初始状态
   user: null,
   isAuthenticated: false,
   isLoading: true,
@@ -167,7 +159,6 @@ export const useStore = create<AppState>((set, get) => ({
   lastSyncTime: null,
   events: [],
 
-  // 初始化
   init: async () => {
     set({ isLoading: true })
     try {
@@ -186,28 +177,29 @@ export const useStore = create<AppState>((set, get) => ({
       set({ isLoading: false })
     }
 
-    // 监听后台同步消息
-    chrome.runtime.onMessage.addListener((message) => {
-      if (message.type === 'TRIGGER_SYNC' && get().isAuthenticated) {
-        get().sync()
-      }
-      if (message.type === 'CHECK_RELEASES' && get().isAuthenticated) {
-        checkReleases().then(() => {
-          get().loadRepos()
-          get().loadEvents()
-        })
-      }
-    })
+    // 背景消息监听器只注册一次（init 在两个入口都会调用）
+    if (!messageListenerAdded) {
+      messageListenerAdded = true
+      chrome.runtime.onMessage.addListener((message) => {
+        if (message.type === 'TRIGGER_SYNC' && get().isAuthenticated) {
+          get().sync()
+        }
+        if (message.type === 'CHECK_RELEASES' && get().isAuthenticated) {
+          checkReleases().then(() => {
+            get().loadRepos()
+            get().loadEvents()
+          })
+        }
+      })
+    }
   },
 
-  // 登录
   login: async (token: string) => {
     const user = await loginWithToken(token)
     set({ user, isAuthenticated: true })
     await get().loadRepos()
   },
 
-  // 登出
   logout: async () => {
     await authLogout()
     set({
@@ -220,7 +212,6 @@ export const useStore = create<AppState>((set, get) => ({
     })
   },
 
-  // 同步
   sync: async () => {
     set({ isSyncing: true, syncProgress: '开始同步...' })
     try {
@@ -241,7 +232,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 加载仓库列表
   loadRepos: async () => {
     const repos = await db.repos.toArray()
     const total = repos.length
@@ -251,7 +241,6 @@ export const useStore = create<AppState>((set, get) => ({
     const allEvents = await db.events.toArray()
     const unreadEvents = allEvents.filter(e => !e.read).length
 
-    // 计算分类统计
     const categoryStats: Record<string, number> = {}
     for (const cat of CATEGORIES) {
       categoryStats[cat.id] = repos.filter(r => r.category === cat.id).length
@@ -263,7 +252,6 @@ export const useStore = create<AppState>((set, get) => ({
     const state = get()
     let filtered = applyFilterAndSort(repos, state.filterType, state.filterValue, state.sortType, state.searchQuery)
 
-    // 分类视图过滤
     if (state.viewMode === 'category' && state.selectedCategory) {
       filtered = filtered.filter(r => r.category === state.selectedCategory)
     }
@@ -271,68 +259,59 @@ export const useStore = create<AppState>((set, get) => ({
     set({ repos, filteredRepos: filtered, stats, categoryStats })
   },
 
-  // 加载事件
   loadEvents: async () => {
     const events = await db.events.orderBy('created_at').reverse().limit(100).toArray()
     set({ events })
   },
 
-  // 搜索
   setSearch: (query: string) => {
     const state = get()
     const filteredRepos = applyFilterAndSort(state.repos, state.filterType, state.filterValue, state.sortType, query)
     set({ searchQuery: query, filteredRepos })
   },
 
-  // 设置过滤
   setFilter: (type: FilterType, value = '') => {
     const state = get()
     const filteredRepos = applyFilterAndSort(state.repos, type, value, state.sortType, state.searchQuery)
     set({ filterType: type, filterValue: value, filteredRepos })
   },
 
-  // 设置排序
   setSort: (type: SortType) => {
     const state = get()
     const filteredRepos = applyFilterAndSort(state.repos, state.filterType, state.filterValue, type, state.searchQuery)
     set({ sortType: type, filteredRepos })
   },
 
-  // 选择仓库
-  selectRepo: (repo) => set({ selectedRepo: repo }),
+  selectRepo: (repo: Repo | null) => {
+    set({ selectedRepo: repo })
+  },
 
-  // 设置视图模式
-  setViewMode: (mode) => {
+  setViewMode: (mode: 'all' | 'category') => {
     set({ viewMode: mode, selectedCategory: null })
     get().loadRepos()
   },
 
-  // 设置选中的分类
-  setSelectedCategory: (category) => {
+  setSelectedCategory: (category: string | null) => {
     set({ selectedCategory: category })
     get().loadRepos()
   },
 
-  // 更新标签
-  updateTags: async (id, tags) => {
+  updateTags: async (id: number, tags: string[]) => {
     await db.repos.update(id, { tags })
     await get().loadRepos()
   },
 
-  // 更新备注
-  updateNotes: async (id, notes) => {
+  updateNotes: async (id: number, notes: string) => {
     await db.repos.update(id, { notes })
     await get().loadRepos()
   },
 
-  // 标记仓库已读
-  markRepoSeen: async (id) => {
+  markRepoSeen: async (id: number) => {
     await db.repos.update(id, { has_updates: false })
     await get().loadRepos()
   },
 
-  // 取消星标
-  removeRepo: async (id) => {
+  removeRepo: async (id: number) => {
     const repo = await db.repos.get(id)
     if (repo) {
       await github.unstarRepo(repo.owner, repo.name)

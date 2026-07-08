@@ -74,14 +74,18 @@ export function classifyRepo(repo: {
   const descText = repo.description || ''
   const combined = `${topicText} ${langText} ${descText}`
 
-  let bestCategory = 'other'
+  let bestCategory: string = 'other'
   let bestScore = 0
+  let bestPriority = Infinity
 
   for (const category of CATEGORIES) {
     const score = countMatches(combined, category.keywords)
-    if (score > bestScore || (score === bestScore && score > 0 && category.priority < CATEGORIES.find(c => c.id === bestCategory)?.priority!)) {
-      bestScore = score
-      bestCategory = category.id
+    if (score > 0) {
+      if (score > bestScore || (score === bestScore && category.priority < bestPriority)) {
+        bestScore = score
+        bestCategory = category.id
+        bestPriority = category.priority
+      }
     }
   }
 
